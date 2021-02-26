@@ -25,26 +25,30 @@ def main():
     # load Dataset
     x = scipy.io.loadmat("../3DShapeNets/volumetric_data/car/30/test/car_000000353_9.mat")
     m = nn.ConstantPad3d(1,0)
-    x_tensor = torch.tensor(x['instance']) 
+    x_tensor = torch.tensor(x['instance'],dtype=torch.float32) 
     x_pad = m(x_tensor)
+    x_pad = np.reshape(x_pad,(1,1,32,32,32))
     #print(x_pad)
 
 
     # load Weights
-    model_params = model.state_dict()
     data_dict = np.load("../shapenet10_weights.npz")
-    model_params['body.conv1.weight'] = data_dict['conv1.W']
-    model_params['body.conv1.bias'] = data_dict['conv1.b']
-    model_params['body.conv2.weight'] = data_dict['conv2.W']
-    model_params['body.conv2.bias'] = data_dict['conv2.b']
-    model_params['head.fc1.weight'] = data_dict['fc1.W']
-    model_params['head.fc1.bias'] = data_dict['fc1.b']
-    model_params['head.fc2.weight'] = data_dict['fc2.W']
-    model_params['head.fc2.bias'] = data_dict['fc2.b']
+    model.state_dict()['body.conv1.weight'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['conv1.W'])))
+    model.state_dict()['body.conv1.bias'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['conv1.b'])))
+    model.state_dict()['body.conv2.weight'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['conv2.W'])))
+    model.state_dict()['body.conv2.bias'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['conv2.b'])))
+
+    model.state_dict()['head.fc1.weight'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['fc1.W'])).t())
+    model.state_dict()['head.fc1.bias'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['fc1.b'])))
+    model.state_dict()['head.fc2.weight'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['fc2.W'])).t())
+    model.state_dict()['head.fc2.bias'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['fc2.b'])))
     
     # inference
     model.eval()
-    y=model.forward(x_pad)
+    with torch.no_grad():
+        y=model.forward(x_pad)
+        print(y)
+        #y = model.head.fc1(x))
     
 
 
