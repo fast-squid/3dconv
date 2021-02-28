@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.onnx
 import os
 import sys
 import importlib
@@ -46,6 +47,9 @@ def main():
     model.state_dict()['head.fc2.weight'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['fc2.W'])).t())
     model.state_dict()['head.fc2.bias'].data.copy_(torch.nn.Parameter(torch.Tensor(data_dict['fc2.b'])))
     
+    # visualize model
+    torch.onnx.export(model, x_pad, "voxnet.onnx")
+
     # inference
     model.eval()
     with torch.no_grad():
