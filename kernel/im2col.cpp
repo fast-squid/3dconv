@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 
 // 3-Dimension representation
 typedef struct _Mat{
@@ -48,7 +49,11 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
     output_2d.D = 1;
     output_2d.H = filter_2d.H;
     output_2d.W = input_2d.W;
-
+    printf("input (%d,%d,%d,%d,%d)\n",input.N,input.C,input.D,input.H,input.W);
+    printf("filter (%d,%d,%d,%d,%d)\n",filter.N,filter.C,filter.D,filter.H,filter.W);
+    printf("param (stride = %d, padding = %d, groups=%d, dilation=%d)\n",p.stride,p.padding,p.groups,p.dilation);
+    printf("output (%d,%d,%d,%d,%d)\n",output.N, output.C, output.D, output.H, output.W);
+    printf("======================================\n");
     printf("input_2d (%d,%d)\n",input_2d.H,input_2d.W);
     printf("filter_2d (%d,%d)\n",filter_2d.H,filter_2d.W);
     printf("output_2d (%d,%d)\n",output_2d.H,output_2d.W);
@@ -96,6 +101,7 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
             }
         }
     }
+    /*
     for(int h = 0; h < input_2d.H; h++)
     {
         for(int w = 0; w < input_2d.W; w++)
@@ -104,6 +110,7 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
         }
         printf("\n");
     }
+    */
 
     return;   
 }
@@ -126,22 +133,38 @@ void set_parameter(Param& p, int stride, int padding, int groups, int dilation)
     p.dilation = dilation;
 }
 
-int main()
+void load_input(Mat& mat, std::string path)
 {
-    Param p;
-    // Default convolution parameter
-    set_parameter(p, 1,0,1,0);
-    Mat input;
-    // Default input size
-    set_matrix(input,1,3,3,3,3);
-    Mat filter;
-    // Default kernel siz
-    set_matrix(filter,4,3,2,2,2);    
+    std::ifstream read_file(path, std::ios::binary);
+    if(!read_file.is_open())
+    {
+        printf("file open error\n");
+        exit(-1);
+    }
+    float val;
+    int idx = 0;
+    while(read_file.read(reinterpret_cast<char*>(&val), sizeof(float)))
+    {
+        mat.data[idx++] = val;
+    }
+}
 
-    printf("input (%d,%d,%d,%d,%d)\n",input.N,input.C,input.D,input.H,input.W);
-    printf("filter (%d,%d,%d,%d,%d)\n",filter.N,filter.C,filter.D,filter.H,filter.W);
-    printf("param (stride = %d, padding = %d, groups=%d, dilation=%d)\n",p.stride,p.padding,p.groups,p.dilation);
+int main(int argc, char* argv[])
+{ 
+    Mat filter;
+    Mat input;
+    Param p;
     
+    // Default convolution parameter
+    set_parameter(p, 2,0,1,0);
+
+    // Default input size
+    set_matrix(input,1,1,32,32,32);
+
+    // Default kernel siz
+    set_matrix(filter,32,1,5,5,5);    
+
+    load_input(input,std::string(argv[1]));
     im2col(input, filter, p);
     return 0;
 }
