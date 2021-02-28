@@ -1,4 +1,4 @@
-![fig](./Figure_1.png)
+![fig](./fig/Figure1.png)
 ## Tutorial Codes for 3D convolution
 This is a tutorial code for studying the __3D CNN__
 It aims to make beginners to acheive basic understanding on 3D Convolution.
