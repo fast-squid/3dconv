@@ -1,24 +1,26 @@
 #include <iostream>
 #include <fstream>
-
-// 3-Dimension representation
-typedef struct _Mat{
-    int N;
-    int C;
-    int D;
-    int H;
-    int W;
-    float *data;
-}Mat;
-
-// convolution parameter
-typedef struct _Param{
-    int stride;
-    int padding;
-    int groups;
-    int dilation;
-}Param;
-
+#include "mat.h"
+#include "sparse.h"
+//
+//// 3-Dimension representation
+//typedef struct _Mat{
+//    int N;
+//    int C;
+//    int D;
+//    int H;
+//    int W;
+//    float *data;
+//}Mat;
+//
+//// convolution parameter
+//typedef struct _Param{
+//    int stride;
+//    int padding;
+//    int groups;
+//    int dilation;
+//}Param;
+//
 void im2col(const Mat& input, const Mat& filter, const Param& p)
 {
     Mat output;
@@ -101,6 +103,7 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
             }
         }
     }
+	dense_to_csr_cuda(input_2d);
     /*
     for(int h = 0; h < input_2d.H; h++)
     {
@@ -156,7 +159,7 @@ int main(int argc, char* argv[])
     Param p;
     
     // Default convolution parameter
-    set_parameter(p, 2,0,1,0);
+    set_parameter(p, 1,0,1,0);
 
     // Default input size
     set_matrix(input,1,1,32,32,32);
@@ -166,5 +169,6 @@ int main(int argc, char* argv[])
 
     load_input(input,std::string(argv[1]));
     im2col(input, filter, p);
+
     return 0;
 }
