@@ -12,6 +12,11 @@ I expect implementing Sparse 3D CNN will greatly improve both performance and th
 
 The base idea is referencing the [VoxNet](http://dimatura.net/publications/voxnet_maturana_scherer_iros15.pdf).
 
+## Converting Dense Matrix to Sparse Matrix
+To convert Dense matrix to Sparse matrix, sparse.cu provides gpu accelerated function.
+2d Dense array -> coo(coordinate) -> csc/csr format
+
+
 ### Dependencies
 
 ### Examples
