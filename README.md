@@ -22,3 +22,27 @@ To convert Dense matrix to Sparse matrix, sparse.cu provides gpu accelerated fun
 ### Examples
 ### Usage
 
+// implementation without convolution parameter(padding, stride, groups, dilation)
+__global__ void cube_to_coo(int input_d, int input_h, int input_w, float* input_data,
+    int output_d, int output_h, int output_w, float* output_data,
+    int *row, int* col,*int val, int nnz)
+{
+    // block[8] : 0 ~ 7
+    int input_w_idx = (blockIdx.x % output_w) + threadIdx.x;
+    int input_h_idx = (blockIdx.x / output_w) % output_h + threadIdx.y;
+    int input_d_idx = ((blockIdx.x / output_w) / output_d) % output_d + threadIdx.z;
+
+    int input_idx =  input_d_idx*(input_h*input_w)
+        + intput_h_idx*(input_w)
+        + input_w_idx;
+    
+    if(input_data[input_idx])
+    {
+        int global_idx = atomicAdd(&nnz, 1);
+        row[global_idx] = threadIdx.z*(blockDim.y*blockDim.x)
+            + threadIdx.y*blockDim.x
+            + threadIdx.x;
+        col[global_idx] = blockIdx.x;
+    }
+}
+
