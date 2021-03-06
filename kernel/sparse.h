@@ -2,4 +2,5 @@
 
 #include "mat.h"
 
-void dense_to_csr_cuda(Mat& dense);
+void cube_to_coo_cuda(Mat& input,Mat& filter, Param& p);
+void coo_to_csr_cuda(Mat &input);

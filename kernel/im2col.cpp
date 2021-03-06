@@ -62,7 +62,7 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
 
     // Filter im2col conversion(same access pattern) 
     filter_2d.data = filter.data;
-
+	int stride = p.stride;
     // Input im2col conversion
     for(int fc = 0; fc < filter.C; fc++)
     {
@@ -75,9 +75,9 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
             {
                 for(int ow = 0; ow < output.W; ow++)
                 {
-                    int window_offset = od*(input.H*input.W)
-                        +oh*(input.W)
-                        +ow;
+                    int window_offset = stride*od*(input.H*input.W)
+                        +stride*oh*(input.W)
+                        +stride*ow;
                     int window_idx = od*(output.H*output.W)
                         +oh*(output.W)
                         +ow;
@@ -90,12 +90,12 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
                                 int f2i_offset = fd*(input.H*input.W)
                                     +fh*(input.W)
                                     +fw;
-                                int input_idx = f2i_offset + window_offset + input_channel_offset;
+                                int input_idx = f2i_offset + window_offset + input_channel_offset; // stride affects window offset
 
                                 int filter_idx = fd*(filter.H*filter.W)
                                     +fh*(filter.W)
                                     +fw;
-                                input_2d.data[input_2d_channel_offset + window_idx + filter_idx*input_2d.W] = input_idx;
+                                input_2d.data[input_2d_channel_offset + window_idx + filter_idx*input_2d.W] = input.data[input_idx];
                             }
                         }
                     }
@@ -103,17 +103,16 @@ void im2col(const Mat& input, const Mat& filter, const Param& p)
             }
         }
     }
-	dense_to_csr_cuda(input_2d);
-    /*
+   	printf("width %d\n",input_2d.W); 
     for(int h = 0; h < input_2d.H; h++)
     {
         for(int w = 0; w < input_2d.W; w++)
         {
-            printf("%.0f ",input_2d.data[(h*input_2d.W) + w]);
+            if(input_2d.data[(h*input_2d.W)+w]> 0.001)
+				printf("%d %d %f\n",h, w, input_2d.data[h*input_2d.W+w]);
         }
-        printf("\n");
     }
-    */
+    
 
     return;   
 }
@@ -156,10 +155,11 @@ int main(int argc, char* argv[])
 { 
     Mat filter;
     Mat input;
+	Mat output;
     Param p;
-    
+
     // Default convolution parameter
-    set_parameter(p, 1,0,1,0);
+    set_parameter(p, 2,0,1,0);
 
     // Default input size
     set_matrix(input,1,1,32,32,32);
@@ -168,7 +168,23 @@ int main(int argc, char* argv[])
     set_matrix(filter,32,1,5,5,5);    
 
     load_input(input,std::string(argv[1]));
-    im2col(input, filter, p);
-
+    //im2col(input, filter, p);
+	cube_to_coo_cuda(input, filter, p);
+	/*for(int i=0;i<input.nnz;i++)
+	{
+		printf("%d %d %f\n",input.coo[i].row, input.coo[i].col, input.coo[i].val);
+	}*/
+	
+	coo_to_csr_cuda(input);
+	int cnt = 0;
+	for(int i=0;i<input.row_num; i++)
+	{
+		int offset = input.ptr[i];
+		int num = input.ptr[i+1]-input.ptr[i];
+		for(int j=0;j<num;j++)
+		{
+			printf("%d %d %d %f\n",i,input.coo[cnt++].col, input.idx[offset+j], input.val[offset+j]);
+		}
+	}
     return 0;
 }
