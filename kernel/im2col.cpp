@@ -2,6 +2,7 @@
 #include <fstream>
 #include "mat.h"
 #include "sparse.h"
+#include <vector>
 //
 //// 3-Dimension representation
 //typedef struct _Mat{
@@ -151,6 +152,29 @@ void load_input(Mat& mat, std::string path)
     }
 }
 
+
+// only for test code
+void load_weights(Mat& filter)
+{
+	std::vector<std::string> files = {
+		"./data/conv1_weight.bin", 
+		"./data/conv1_bias",
+		"./data/conv2_weight.bin",
+		"./data/conv2_bias.bin"};
+	std::cout << files[0] << std::endl;
+	std::ifstream read_file(files[0], std::ios::binary);
+    if(!read_file.is_open())
+    {
+        printf("file open error\n");
+        exit(-1);
+    }
+    float val;
+    int idx = 0;
+    while(read_file.read(reinterpret_cast<char*>(&val), sizeof(float)))
+    {
+        filter.data[idx++] = val;
+    }
+}
 int main(int argc, char* argv[])
 { 
     Mat filter;
@@ -168,23 +192,15 @@ int main(int argc, char* argv[])
     set_matrix(filter,32,1,5,5,5);    
 
     load_input(input,std::string(argv[1]));
-    //im2col(input, filter, p);
-	cube_to_coo_cuda(input, filter, p);
-	/*for(int i=0;i<input.nnz;i++)
-	{
-		printf("%d %d %f\n",input.coo[i].row, input.coo[i].col, input.coo[i].val);
-	}*/
+    load_weights(filter);
+	//im2col(input, filter, p);
+	//cube_to_coo_cuda(input, filter, p);
+	//coo_to_csc_cuda(input);
+
+	// conv layer 1
+	sparse_conv_cuda(input, filter, p, output);
+
 	
-	coo_to_csr_cuda(input);
-	int cnt = 0;
-	for(int i=0;i<input.row_num; i++)
-	{
-		int offset = input.ptr[i];
-		int num = input.ptr[i+1]-input.ptr[i];
-		for(int j=0;j<num;j++)
-		{
-			printf("%d %d %d %f\n",i,input.coo[cnt++].col, input.idx[offset+j], input.val[offset+j]);
-		}
-	}
+	
     return 0;
 }
