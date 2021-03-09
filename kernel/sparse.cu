@@ -197,54 +197,85 @@ void coo_to_csc_cuda(Mat& input, int& number_of_non_zero_vectors, int *non_zero_
 
 
 
-//__global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
-//		int* b_ptr, int* b_idx, float* b_val,
-//		int* c_ptr, int* c_idx, float* c_val,
-//		int* non_zero_bin)
-//{
-//	int col_idx = aaaaaaa[blockIdx.x];
-//	int row_offset = b_ptr[col_idx];
-//	
-//	// load B's row idx to shared memory
-//	__shared__ int smem_b_row[1024];
-//	__shared__ int smem_b_val[1024];
-//
-//	for(int tid = threadIdx.x; tid < nnz; tid+=blockDim.x)
-//	{
-//		smem_b_row[tid] = b_idx[row_offset + tid];
-//		smem_b_val[tid] = b_val[row_offset + tid];
-//	}
-//	__syncthreads();
-//
-//	__shared__ float smem_c_idx[];
-//	__shared__ float smem_c_val[1024];
-//	for(int a_h = threadIdx.x; a_h < a_height; a_h+=blockDim.x)
-//	{
-//		int idx = s_mem_b_row[tid];
-//		c_idx[a_h] = a_h;
-//		for(int idx = 0; idx < nnz; idx++)
-//		{
-//			smem_c_val[a_h] += a_val[a_h*a_width + idx] * smem_b_val[idx];
-//		}
-//	}
-//	c_ptr[col_idx+1] = a_height*blockIdx.x;
-//}
-//
-//void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
-//		int number_of_non_zero_vectors, const int& non_zero_vectors)
-//{
-//	int block_size;
-//	int block_num;
-//	
-//	int a_height = filter.N;
-//	int a_width = filter.C*filter.D*filter.H*filter.W;
-//	
-//	dense_sparse_mm<<<block_num, block_size >>>(a_height, a_width ,filter.data_dev,
-//		input.ptr_dev, input.idx_dev, input.val_dev,
-//		output.ptr_dev,  output.idx_dev, output.val_ev,
-//		int* non_zero_bin);
-//}
-//*/
+__global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
+		int* b_ptr, int* b_idx, float* b_val,
+		int* c_ptr, int* c_idx, float* c_val,
+		int* non_zero_vectors)
+{
+	int col_idx = non_zero_vectors[blockIdx.x];
+	int row_offset = b_ptr[col_idx];
+	int nnz = b_ptr[col_idx + 1] - b_ptr[col_idx];
+	//printf(".\n");
+	//printf("blockIdx %d\n",nnz);
+	// load B's row idx to shared memory
+	__shared__ int smem_b_row[1024];
+	__shared__ int smem_b_val[1024];
+
+	for(int tid = threadIdx.x; tid < nnz; tid+=blockDim.x)
+	{
+		smem_b_row[tid] = b_idx[row_offset + tid];
+		smem_b_val[tid] = b_val[row_offset + tid];
+	}
+	__syncthreads();
+
+	__shared__ float smem_c_idx[1024];
+	__shared__ float smem_c_val[1024];
+	for(int a_h = threadIdx.x; a_h < a_height; a_h+=blockDim.x)
+	{
+		int idx = smem_b_row[a_h];
+		c_idx[a_h] = a_h;
+		for(int idx = 0; idx < nnz; idx++)
+		{
+			smem_c_val[a_h] += a_val[a_h*a_width + idx] * smem_b_val[idx];
+		}
+	}
+	c_ptr[col_idx+1] = a_height*blockIdx.x;
+}
+
+void call_when_model_loaded(Mat& filter)
+{
+	int size = filter.N*filter.C*filter.D*filter.H*filter.W;
+	cudaMalloc((void**)&filter.data_dev, sizeof(int)*size);
+	cudaMemcpy(filter.data_dev, filter.data, sizeof(int)*size, cudaMemcpyHostToDevice);
+	printf("filter size %d\n",size);
+}
+
+void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
+		int number_of_non_zero_vectors, int* non_zero_vectors)
+{
+	int block_num = 1;//number_of_non_zero_vectors;
+	int block_size = 128;
+	
+	int a_height = filter.N;
+	int a_width = filter.C*filter.D*filter.H*filter.W;
+	int b_height = input.row_num;
+	int b_width = input.col_num;
+
+
+	int* non_zero_vectors_dev;
+	cudaMalloc((void**)&non_zero_vectors_dev, sizeof(int)*number_of_non_zero_vectors);
+	cudaMemcpy(non_zero_vectors_dev, non_zero_vectors, sizeof(int)*number_of_non_zero_vectors, cudaMemcpyHostToDevice);
+	call_when_model_loaded(filter);
+
+	output.row_num = a_height;
+	output.col_num = b_width;
+	output.nnz = a_height*number_of_non_zero_vectors;
+
+	cudaMalloc((void**)&output.ptr_dev, sizeof(int)*(output.col_num+1));
+	cudaMalloc((void**)&output.idx_dev, sizeof(int)*output.nnz);
+	cudaMalloc((void**)&output.val_dev, sizeof(float)*output.nnz);
+	ERROR_CHECK;
+	printf("%d %d\n",a_height, a_width);
+	printf("%d %d\n",b_height, b_width);
+	printf("%d %d %d\n",output.row_num, output.col_num, output.nnz);
+	printf("bs %d bn %d\n",block_size, block_num);	
+	dense_sparse_mm<<<block_num, block_size >>>(a_height, a_width,filter.data_dev,
+		input.ptr_dev, input.idx_dev, input.val_dev,
+		output.ptr_dev,  output.idx_dev, output.val_dev,
+		non_zero_vectors_dev);
+		
+}
+
 void sparse_conv_cuda(Mat& input, Mat& filter, Param& p, Mat& output)
 {
 	cube_to_coo_cuda(input, filter, p);
@@ -252,7 +283,7 @@ void sparse_conv_cuda(Mat& input, Mat& filter, Param& p, Mat& output)
 	int number_of_non_zero_vectors = 0;
 	coo_to_csc_cuda(input, number_of_non_zero_vectors, non_zero_vectors);
 	printf("number of non zero vectors : %d\n",number_of_non_zero_vectors);
-	//dense_sparse_mm_cuda(input, filter, output, );
+	dense_sparse_mm_cuda(input, filter, output, number_of_non_zero_vectors, non_zero_vectors);
 
 	
 }
