@@ -1,13 +1,13 @@
 #include "mat.h"
 #include <iostream>
 #include <stdlib.h>
+
 #define ERROR_CHECK \
 {\
 	cudaError err = cudaGetLastError(); \
 	if ( cudaSuccess != err ) \
 	{\
 		printf("[%s:%d]CUDA ERROR : %s\n", __FILE__, __LINE__, cudaGetErrorString(err) ); \
-		exit(-1); \
 	}\
 }
 __device__ __constant__ float eps = 0.0001;
@@ -49,6 +49,13 @@ int compare(const void* a, const void* b)
 	else return x.col - y.col;
 }
 
+int compare2(const void* a, const void* b)
+{
+	COO x = *(COO*)a;
+	COO y = *(COO*)b;
+	if(x.row == y.row) return x.col - y.col;
+	else return x.row - y.row;
+}
 void cube_to_coo_cuda(Mat& input, Mat& filter, Param& p)
 {
 	int output_N = 1;
@@ -205,8 +212,7 @@ __global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
 	int col_idx = non_zero_vectors[blockIdx.x];
 	int row_offset = b_ptr[col_idx];
 	int nnz = b_ptr[col_idx + 1] - b_ptr[col_idx];
-	//printf(".\n");
-	//printf("blockIdx %d\n",nnz);
+	
 	// load B's row idx to shared memory
 	__shared__ int smem_b_row[1024];
 	__shared__ int smem_b_val[1024];
@@ -218,18 +224,24 @@ __global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
 	}
 	__syncthreads();
 
-	__shared__ float smem_c_idx[1024];
 	__shared__ float smem_c_val[1024];
+
+
 	for(int a_h = threadIdx.x; a_h < a_height; a_h+=blockDim.x)
 	{
 		int idx = smem_b_row[a_h];
-		c_idx[a_h] = a_h;
 		for(int idx = 0; idx < nnz; idx++)
 		{
 			smem_c_val[a_h] += a_val[a_h*a_width + idx] * smem_b_val[idx];
 		}
 	}
-	c_ptr[col_idx+1] = a_height*blockIdx.x;
+	c_ptr[col_idx+1] = a_height;
+	for(int tid = threadIdx.x; tid < a_height; tid += blockDim.x)
+	{
+		c_val[a_height*blockIdx.x+tid] = smem_c_val[tid];
+		c_idx[a_height*blockIdx.x+tid] = tid;
+	}
+	 
 }
 
 void call_when_model_loaded(Mat& filter)
@@ -243,14 +255,13 @@ void call_when_model_loaded(Mat& filter)
 void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 		int number_of_non_zero_vectors, int* non_zero_vectors)
 {
-	int block_num = 1;//number_of_non_zero_vectors;
-	int block_size = 128;
+	int block_num = number_of_non_zero_vectors;
+	int block_size = 32;
 	
 	int a_height = filter.N;
 	int a_width = filter.C*filter.D*filter.H*filter.W;
 	int b_height = input.row_num;
 	int b_width = input.col_num;
-
 
 	int* non_zero_vectors_dev;
 	cudaMalloc((void**)&non_zero_vectors_dev, sizeof(int)*number_of_non_zero_vectors);
@@ -264,16 +275,47 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 	cudaMalloc((void**)&output.ptr_dev, sizeof(int)*(output.col_num+1));
 	cudaMalloc((void**)&output.idx_dev, sizeof(int)*output.nnz);
 	cudaMalloc((void**)&output.val_dev, sizeof(float)*output.nnz);
-	ERROR_CHECK;
+	cudaMemset(output.ptr_dev, 0, sizeof(int)*(output.col_num+1));
 	printf("%d %d\n",a_height, a_width);
 	printf("%d %d\n",b_height, b_width);
 	printf("%d %d %d\n",output.row_num, output.col_num, output.nnz);
 	printf("bs %d bn %d\n",block_size, block_num);	
+	
 	dense_sparse_mm<<<block_num, block_size >>>(a_height, a_width,filter.data_dev,
 		input.ptr_dev, input.idx_dev, input.val_dev,
 		output.ptr_dev,  output.idx_dev, output.val_dev,
 		non_zero_vectors_dev);
-		
+	
+	output.ptr = new int[output.col_num+1];
+	output.idx = new int[output.nnz];
+	output.val = new float[output.nnz];
+	
+	cudaMemcpy(output.ptr, output.ptr_dev, sizeof(int)*(output.col_num+1),cudaMemcpyDeviceToHost);
+	cudaMemcpy(output.idx, output.idx_dev, sizeof(int)*output.nnz,cudaMemcpyDeviceToHost);
+	cudaMemcpy(output.val, output.val_dev, sizeof(float)*output.nnz,cudaMemcpyDeviceToHost);
+	cudaDeviceSynchronize();
+
+	Mat temp;
+	temp.row_num = output.row_num;
+	temp.col_num = output.col_num;
+	temp.coo = new COO[output.nnz];
+	temp.nnz = output.nnz;
+	int temp_idx = 0;
+	for(int i=0; i<output.col_num+1; i++)
+	{
+		int nnz_per_col = output.ptr[i+1] ;
+		int offset = output.ptr[i];
+		for(int j=0;j<nnz_per_col;j++)
+		{
+			temp.coo[temp_idx].row = output.idx[offset+j];
+			temp.coo[temp_idx].col = i;
+			temp.coo[temp_idx].val = output.val[offset+j];
+			temp_idx++;
+		}
+	}
+	qsort(temp.coo, temp.nnz, sizeof(COO),compare2);
+	print_coo(temp);
+	
 }
 
 void sparse_conv_cuda(Mat& input, Mat& filter, Param& p, Mat& output)

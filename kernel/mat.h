@@ -45,5 +45,7 @@ typedef struct _Param{
     int dilation;
 }Param;
 
-
+int get_mat_size(const Mat&);
+void print_mat(Mat&);
+void print_coo(const Mat&);
 

@@ -181,6 +181,12 @@ int main(int argc, char* argv[])
     Mat input;
 	Mat output;
     Param p;
+	//set_matrix(output,1,1,32,32,32);	
+	
+	//load_input(output, std::string(argv[1]));
+	//printf("loaded\n");
+	//print_mat(output);
+	//return 0;
 
     // Default convolution parameter
     set_parameter(p, 2,0,1,0);
@@ -199,7 +205,7 @@ int main(int argc, char* argv[])
 
 	// conv layer 1
 	sparse_conv_cuda(input, filter, p, output);
-
+	
 	
 	
     return 0;
