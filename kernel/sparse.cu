@@ -23,7 +23,7 @@ __global__ void cube_to_coo(int input_d, int input_h, int input_w, float* input_
 		
 		int input_w_idx = (blockIdx.x % output_w)*stride + threadIdx.x;
 		int input_h_idx = ((blockIdx.x / output_w) % output_h)*stride + threadIdx.y;
-		int input_d_idx = (((blockIdx.x / output_w) / output_d) % output_d)*stride + threadIdx.z;
+		int input_d_idx = (((blockIdx.x / output_w) / output_h) % output_d)*stride + threadIdx.z;
 
 		int input_idx =  input_d_idx*(input_h*input_w)
 			+ input_h_idx*(input_w)
@@ -215,7 +215,7 @@ __global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
 	
 	// load B's row idx to shared memory
 	__shared__ int smem_b_row[1024];
-	__shared__ int smem_b_val[1024];
+	__shared__ float smem_b_val[1024];
 
 	for(int tid = threadIdx.x; tid < nnz; tid+=blockDim.x)
 	{
@@ -229,18 +229,23 @@ __global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
 
 	for(int a_h = threadIdx.x; a_h < a_height; a_h+=blockDim.x)
 	{
-		int idx = smem_b_row[a_h];
+		c_val[a_height*blockIdx.x + a_h] = 0;
+		c_idx[a_height*blockIdx.x + a_h] = a_h;
+
 		for(int idx = 0; idx < nnz; idx++)
 		{
-			smem_c_val[a_h] += a_val[a_h*a_width + idx] * smem_b_val[idx];
+			c_val[a_height*blockIdx.x + a_h] += a_val[a_h*a_width + smem_b_row[idx]] * smem_b_val[idx];
 		}
 	}
+	__syncthreads();
+
 	c_ptr[col_idx+1] = a_height;
+	/*
 	for(int tid = threadIdx.x; tid < a_height; tid += blockDim.x)
 	{
 		c_val[a_height*blockIdx.x+tid] = smem_c_val[tid];
 		c_idx[a_height*blockIdx.x+tid] = tid;
-	}
+	}*/
 	 
 }
 
@@ -256,7 +261,7 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 		int number_of_non_zero_vectors, int* non_zero_vectors)
 {
 	int block_num = number_of_non_zero_vectors;
-	int block_size = 32;
+	int block_size = 256;
 	
 	int a_height = filter.N;
 	int a_width = filter.C*filter.D*filter.H*filter.W;
@@ -301,9 +306,10 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 	temp.coo = new COO[output.nnz];
 	temp.nnz = output.nnz;
 	int temp_idx = 0;
-	for(int i=0; i<output.col_num+1; i++)
+	for(int i=0; i<output.col_num; i++)
 	{
-		int nnz_per_col = output.ptr[i+1] ;
+		output.ptr[i+1] += output.ptr[i];
+		int nnz_per_col = output.ptr[i+1] - output.ptr[i] ;
 		int offset = output.ptr[i];
 		for(int j=0;j<nnz_per_col;j++)
 		{

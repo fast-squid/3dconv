@@ -3,25 +3,7 @@
 #include "mat.h"
 #include "sparse.h"
 #include <vector>
-//
-//// 3-Dimension representation
-//typedef struct _Mat{
-//    int N;
-//    int C;
-//    int D;
-//    int H;
-//    int W;
-//    float *data;
-//}Mat;
-//
-//// convolution parameter
-//typedef struct _Param{
-//    int stride;
-//    int padding;
-//    int groups;
-//    int dilation;
-//}Param;
-//
+
 void im2col(const Mat& input, const Mat& filter, const Param& p)
 {
     Mat output;
@@ -175,18 +157,19 @@ void load_weights(Mat& filter)
         filter.data[idx++] = val;
     }
 }
+
 int main(int argc, char* argv[])
 { 
     Mat filter;
     Mat input;
 	Mat output;
     Param p;
-	//set_matrix(output,1,1,32,32,32);	
+	set_matrix(output,32,1,5,5,5);	
 	
-	//load_input(output, std::string(argv[1]));
-	//printf("loaded\n");
-	//print_mat(output);
-	//return 0;
+	load_input(output, std::string(argv[1]));
+	printf("loaded\n");
+	print_mat(output);
+	return 0;
 
     // Default convolution parameter
     set_parameter(p, 2,0,1,0);
@@ -199,9 +182,6 @@ int main(int argc, char* argv[])
 
     load_input(input,std::string(argv[1]));
     load_weights(filter);
-	//im2col(input, filter, p);
-	//cube_to_coo_cuda(input, filter, p);
-	//coo_to_csc_cuda(input);
 
 	// conv layer 1
 	sparse_conv_cuda(input, filter, p, output);

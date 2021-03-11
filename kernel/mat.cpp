@@ -24,7 +24,8 @@ void print_mat(Mat& mat)
 							+h*mat.W
 							+w;
 						if(mat.data[idx]>0.00001){
-							printf("%d %d %d %d %f\n",c,d,h,w,mat.data[idx]);
+							//printf("%d %d %d %d %f\n",c,d,h,w,mat.data[idx]);
+							printf("%f\n",mat.data[idx]);
 							nnz++;
 						}
 					}
@@ -39,7 +40,9 @@ void print_coo(const Mat& mat)
 {
 	for(int i=0;i<mat.nnz;i++)
 	{
-		printf("%d %d %f\n",mat.coo[i].row, mat.coo[i].col, mat.coo[i].val);
+		printf(" %f\n",mat.coo[i].val);
+
+	//	printf("%d %d %f\n",mat.coo[i].row, mat.coo[i].col, mat.coo[i].val);
 	}
 }
 
