@@ -202,21 +202,43 @@ void coo_to_csc_cuda(Mat& input, int& number_of_non_zero_vectors, int *non_zero_
 	cudaMemcpy(input.ptr_dev, input.ptr, sizeof(int)*(input.col_num+1),cudaMemcpyHostToDevice);
 }
 
-
-
+/*
+ * Function: dense_sparse_mm
+ * -----------------------------------------------------------------------
+ * computes matrix multiplication  C = AxB corresponding to convolution 
+ * Parameters ------------------------------------------------------------
+ * matrix A (dense matrix A correspoinding to filter)
+ * 	a_height : height of matrix A
+ *	a_width  : width of matrix A 
+ * 	a_val    : value array of matrix A
+ * matrix B (CSC formatted B corresponding to input feature map) 
+ *	b_ptr	 : row pointer array of matrix B 
+ *	b_idx	 : column index array of matrix B
+ *	b_val	 : value array of matrix B
+ * non_zero_vectors : non-zero column vector idx array of matrix B
+ * returns ---------------------------------------------------------------
+ * matrix C (CSC forammted C correspoint to output feature map)
+ * 	 c_ptr, c_idx, c_val : same as B
+ */
 __global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
 		int* b_ptr, int* b_idx, float* b_val,
 		int* c_ptr, int* c_idx, float* c_val,
 		int* non_zero_vectors)
 {
-	int col_idx = non_zero_vectors[blockIdx.x];
-	int row_offset = b_ptr[col_idx];
-	int nnz = b_ptr[col_idx + 1] - b_ptr[col_idx];
+	int b_col_idx = non_zero_vectors[blockIdx.x];
+	int row_offset = b_ptr[b_col_idx];
+	int nnz = b_ptr[b_col_idx + 1] - b_ptr[b_col_idx];
 	
-	// load B's row idx to shared memory
-	__shared__ int smem_b_row[1024];
-	__shared__ float smem_b_val[1024];
+	__shared__ float smem_a_row[4][32];
+	__shared__ int smem_b_row[128];
+	__shared__ float smem_b_val[128];
 
+	// load a's column
+	const int tile_width = 4;
+	const int tile_height = 32;
+	int total_tile = nnz/tile_width; // tile size : (32 * 4)
+	int remainings = nnz%tile_width;
+	
 	for(int tid = threadIdx.x; tid < nnz; tid+=blockDim.x)
 	{
 		smem_b_row[tid] = b_idx[row_offset + tid];
@@ -224,29 +246,45 @@ __global__ void dense_sparse_mm(int a_height, int a_width, float* a_val,
 	}
 	__syncthreads();
 
-	__shared__ float smem_c_val[1024];
-
-
-	for(int a_h = threadIdx.x; a_h < a_height; a_h+=blockDim.x)
-	{
-		c_val[a_height*blockIdx.x + a_h] = 0;
-		c_idx[a_height*blockIdx.x + a_h] = a_h;
-
-		for(int idx = 0; idx < nnz; idx++)
+	// compute tiled matrix multiplication
+	float val = 0;
+	int tile_id = 0;
+	for(tile_id = 0; tile_id < total_tile; tile_id++)
+	{	
+		int tile_offset = tile_width * tile_id;
+		smem_a_row[threadIdx.x][0] 
+			= a_val[a_width*threadIdx.x + smem_b_row[tile_offset+0]];
+		smem_a_row[threadIdx.x][1] 
+			= a_val[a_width*threadIdx.x + smem_b_row[tile_offset+1]];
+		smem_a_row[threadIdx.x][2] 
+			= a_val[a_width*threadIdx.x + smem_b_row[tile_offset+2]];
+		smem_a_row[threadIdx.x][3] 
+			= a_val[a_width*threadIdx.x + smem_b_row[tile_offset+3]];
+		__syncthreads();
+		
+		for(int a_ridx = threadIdx.x ; a_ridx < a_height; a_ridx += blockDim.x)
 		{
-			c_val[a_height*blockIdx.x + a_h] += a_val[a_h*a_width + smem_b_row[idx]] * smem_b_val[idx];
+			val += smem_a_val[a_ridx][0] * smem_b_val[tile_offset + 0];
+			val += smem_a_val[a_ridx][1] * smem_b_val[tile_offset + 1];
+			val += smem_a_val[a_ridx][2] * smem_b_val[tile_offset + 2];
+			val += smem_a_val[a_ridx][3] * smem_b_val[tile_offset + 3];
 		}
 	}
-	__syncthreads();
-
-	c_ptr[col_idx+1] = a_height;
-	/*
-	for(int tid = threadIdx.x; tid < a_height; tid += blockDim.x)
+	
+	// compute remaining matrix multiplication
+	for(int r = 0; r < remainings; r++)
 	{
-		c_val[a_height*blockIdx.x+tid] = smem_c_val[tid];
-		c_idx[a_height*blockIdx.x+tid] = tid;
-	}*/
-	 
+		int tile_offset = tile_id*tile_width;
+		smem_a_row[threadIdx.x][r] 
+			= a_val[a_width*threadIdx.x + smem_b_row[tile_offset + r]];
+	}
+	for(int r = 0; r < remainings; r++)
+	{
+		val += smem_a_val[threadIdx.x][r] * smem_b_val[tile_offset + r];
+	}
+	c_idx[height*blockIdx.x + threadIdx.x] 
+	c_val[height*blockIdx.x + threadIdx.x] = val;
+	c_ptr[col_idx+1] = 32;
 }
 
 void call_when_model_loaded(Mat& filter)
@@ -261,7 +299,7 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 		int number_of_non_zero_vectors, int* non_zero_vectors)
 {
 	int block_num = number_of_non_zero_vectors;
-	int block_size = 256;
+	int block_size = 32;
 	
 	int a_height = filter.N;
 	int a_width = filter.C*filter.D*filter.H*filter.W;
@@ -299,12 +337,11 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 	cudaMemcpy(output.idx, output.idx_dev, sizeof(int)*output.nnz,cudaMemcpyDeviceToHost);
 	cudaMemcpy(output.val, output.val_dev, sizeof(float)*output.nnz,cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();
-
+	
 	Mat temp;
 	temp.row_num = output.row_num;
 	temp.col_num = output.col_num;
 	temp.coo = new COO[output.nnz];
-	temp.nnz = output.nnz;
 	int temp_idx = 0;
 	for(int i=0; i<output.col_num; i++)
 	{
@@ -319,6 +356,7 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 			temp_idx++;
 		}
 	}
+	temp.nnz = output.ptr[output.col_num];
 	qsort(temp.coo, temp.nnz, sizeof(COO),compare2);
 	print_coo(temp);
 	
