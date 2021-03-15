@@ -4,8 +4,8 @@ NVCC=nvcc
 CPPFLAGS =-g -c  
 NVCCFLAGS=-g -c -arch=sm_61
 
-
-./test: im2col.cpp.o sparse.cu.o
+ 
+./test: im2col.cpp.o sparse.cu.o mat.cpp.o
 	nvcc -arch=sm_61 -o $@ $^
 
 ./im2col.cpp.o: ./im2col.cpp
@@ -13,4 +13,7 @@ NVCCFLAGS=-g -c -arch=sm_61
 
 ./sparse.cu.o : ./sparse.cu
 	$(NVCC) $(NVCCFLAGS) -o $@ $<
+
+./mat.cpp.o: ./mat.cpp
+	$(CXX) $(CPPFLAGS) -o $@ $< 
 

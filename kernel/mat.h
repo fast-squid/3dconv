@@ -16,7 +16,7 @@ typedef struct _Mat{
     int W;
 	int nnz;
     float *data;
-	
+	float *data_trans;	
 	// coo format
 	int row_num;
 	int col_num;
@@ -46,6 +46,9 @@ typedef struct _Param{
 }Param;
 
 int get_mat_size(const Mat&);
-void print_mat(Mat&);
+void print_mat(const Mat&);
 void print_coo(const Mat&);
+void set_rand(Mat&);
+void set_transpose(Mat&);
+float* transpose(const Mat&);
 

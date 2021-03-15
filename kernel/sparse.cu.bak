@@ -239,19 +239,19 @@ __global__ void dense_sparse_mm(const int a_height, const int a_width, const flo
 		//if(threadIdx.x %32 == 0)
 		//	printf("b_cidx %d nnz %d\n",b_cidx,nnz);
 		
-		//__shared__ float smem_a_val[128][32];
+		__shared__ float smem_a_val[128][96];
 		
 		// compute tiled matrix multiplication
 		float val = 0;
 		for(int i=0 ; i < nnz; i++)
 		{	
 			//smem_a_val[i][32*wid + tid%32] = a_val[a_width*(tid%32) + b_idx[b_offset+i]];
-			val += a_val[a_width*(b_idx[b_offset+i])+wid*32+tid%32] *b_val[b_offset+i];
+			val += a_val[a_width*(tid%32) + b_idx[b_offset+i]] *b_val[b_offset+i];
 
 		}
 		// compute remaining matrix multiplication
 		int c_cidx = b_cidx;
-		int c_height = a_width;
+		int c_height = a_height;
 		c_idx[c_height*gwid + tid%32] = tid%32;
 		c_val[c_height*gwid + tid%32] = val;
 		c_ptr[c_cidx+1] = 32;
@@ -260,11 +260,10 @@ __global__ void dense_sparse_mm(const int a_height, const int a_width, const flo
 }
 
 void call_when_model_loaded(Mat& filter)
-{	
-	set_transpose(filter);
+{
 	int size = filter.N*filter.C*filter.D*filter.H*filter.W;
-	cudaMalloc((void**)&filter.data_dev, sizeof(float)*size);
-	cudaMemcpy(filter.data_dev, filter.data_trans, sizeof(float)*size, cudaMemcpyHostToDevice);
+	cudaMalloc((void**)&filter.data_dev, sizeof(int)*size);
+	cudaMemcpy(filter.data_dev, filter.data, sizeof(int)*size, cudaMemcpyHostToDevice);
 	printf("filter size %d\n",size);
 }
 
@@ -272,8 +271,8 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 		int number_of_non_zero_vectors, int* non_zero_vectors)
 {
 
-	int a_height = filter.C*filter.D*filter.H*filter.W;
-	int a_width = filter.N;
+	int a_height = filter.N;
+	int a_width = filter.C*filter.D*filter.H*filter.W;
 	int b_height = input.row_num;
 	int b_width = input.col_num;
 
@@ -282,17 +281,17 @@ void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 	cudaMemcpy(non_zero_vectors_dev, non_zero_vectors, sizeof(int)*number_of_non_zero_vectors, cudaMemcpyHostToDevice);
 	call_when_model_loaded(filter);
 
-	output.row_num = a_width;
+	output.row_num = a_height;
 	output.col_num = b_width;
-	output.nnz = a_width*number_of_non_zero_vectors;
+	output.nnz = a_height*number_of_non_zero_vectors;
 
 	cudaMalloc((void**)&output.ptr_dev, sizeof(int)*(output.col_num+1));
 	cudaMalloc((void**)&output.idx_dev, sizeof(int)*output.nnz);
 	cudaMalloc((void**)&output.val_dev, sizeof(float)*output.nnz);
 	cudaMemset(output.ptr_dev, 0, sizeof(int)*(output.col_num+1));
 	int tmp = number_of_non_zero_vectors;
-	int block_num = tmp;
-	int block_size = 32;
+	int block_num = tmp/3+1;
+	int block_size = 96;
 	
 	printf("%d %d\n",a_height, a_width);
 	printf("%d %d\n",b_height, b_width);

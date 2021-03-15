@@ -1,0 +1,11 @@
+./data/conv1_weight.bin
+input shape  : (1,1,32,32,32)
+output shape : (1,32,14,14,14)
+im2col shape : (125,2744)
+nnz 38277 38277
+number of non zero vectors : 955
+filter size 4000
+32 125
+125 2744
+32 2744 30560
+bs 32 bn 955

@@ -164,12 +164,12 @@ int main(int argc, char* argv[])
     Mat input;
 	Mat output;
     Param p;
-	set_matrix(output,32,1,5,5,5);	
+	//set_matrix(output,32,1,14,14,14);	
 	
-	load_input(output, std::string(argv[1]));
-	printf("loaded\n");
-	print_mat(output);
-	return 0;
+	//load_input(output, std::string(argv[1]));
+	//printf("loaded\n");
+	//print_mat(output);
+	//return 0;
 
     // Default convolution parameter
     set_parameter(p, 2,0,1,0);
@@ -178,11 +178,11 @@ int main(int argc, char* argv[])
     set_matrix(input,1,1,32,32,32);
 
     // Default kernel siz
-    set_matrix(filter,32,1,5,5,5);    
-
-    load_input(input,std::string(argv[1]));
+    set_matrix(filter,32,1,5,5,5);   
+	
+	load_input(input,std::string(argv[1]));
     load_weights(filter);
-
+	
 	// conv layer 1
 	sparse_conv_cuda(input, filter, p, output);
 	
