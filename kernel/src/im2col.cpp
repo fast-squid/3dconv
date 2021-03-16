@@ -2,6 +2,7 @@
 #include <fstream>
 #include "mat.h"
 #include "sparse.h"
+#include "model.h"
 #include <vector>
 
 void im2col(const Mat& input, const Mat& filter, const Param& p)
@@ -164,6 +165,9 @@ int main(int argc, char* argv[])
     Mat input;
 	Mat output;
     Param p;
+	Model voxnet("voxnet");
+	std::cout << voxnet.name << std::endl;
+	return 0;
 	//set_matrix(output,32,1,14,14,14);	
 	
 	//load_input(output, std::string(argv[1]));
