@@ -1,28 +1,24 @@
 #include "mat.h"
 #include <stdio.h>
 #include <stdlib.h>
-int get_mat_size(const Mat& mat)
-{
-	return mat.N*mat.C*mat.D*mat.H*mat.W;
-}
 
 void print_mat(const Mat& mat)
 {
 	int nnz = 0;
-	for(int n=0;n<mat.N;n++)
+	for(int n=0;n<mat.n;n++)
 	{
-		for(int c = 0; c<mat.C;c++)
+		for(int c = 0; c<mat.c;c++)
 		{
-			for(int d = 0;d<mat.D;d++)
+			for(int d = 0;d<mat.d;d++)
 			{
-				for(int h = 0; h<mat.H;h++)
+				for(int h = 0; h<mat.h;h++)
 				{
-					for(int w=0; w<mat.W;w++)
+					for(int w=0; w<mat.w;w++)
 					{
-						int idx = n*mat.C*mat.D*mat.H*mat.W
-							+c*mat.D*mat.H*mat.W
-							+d*mat.H*mat.W
-							+h*mat.W
+						int idx = n*mat.c*mat.d*mat.h*mat.w
+							+c*mat.d*mat.h*mat.w
+							+d*mat.h*mat.w
+							+h*mat.w
 							+w;
 							//printf("%d %d %d %d %f\n",c,d,h,w,mat.data[idx]);
 							printf("%f\n",mat.data[idx]);
@@ -47,7 +43,7 @@ void print_coo(const Mat& mat)
 
 void set_rand(Mat& mat)
 {
-	for(int i=0;i<get_mat_size(mat);i++)
+	for(int i=0;i<mat.get_mat_size();i++)
 	{
 		mat.data[i] = ((float)(rand()%100))/100;
 	}
@@ -55,9 +51,9 @@ void set_rand(Mat& mat)
 
 void set_transpose(Mat& mat)
 {
-	mat.data_trans = new float[get_mat_size(mat)];
-	int row = mat.N;
-	int col = mat.C*mat.D*mat.H*mat.W;
+	mat.data_trans = new float[mat.get_mat_size()];
+	int row = mat.n;
+	int col = mat.c*mat.d*mat.h*mat.w;
 	
 	for(int j=0; j < col; j++)
 	{

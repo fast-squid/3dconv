@@ -58,17 +58,17 @@ int compare2(const void* a, const void* b)
 }
 void cube_to_coo_cuda(Mat& input, Mat& filter, Param& p)
 {
-	int output_N = 1;
-	int output_C = filter.N;
-	int output_D = 1+(input.D - filter.D + 2*p.padding)/p.stride;
-	int output_H = 1+(input.H - filter.H + 2*p.padding)/p.stride;
-	int output_W = 1+(input.W - filter.W + 2*p.padding)/p.stride;
+	int output_n = 1;
+	int output_c = filter.n;
+	int output_d = 1+(input.d - filter.d + 2*p.padding)/p.stride;
+	int output_h = 1+(input.h - filter.h + 2*p.padding)/p.stride;
+	int output_w = 1+(input.w - filter.w + 2*p.padding)/p.stride;
 	
-	input.row_num = filter.C*filter.D*filter.H*filter.W;
-	input.col_num = output_D*output_H*output_W;
+	input.row_num = filter.c*filter.d*filter.h*filter.w;
+	input.col_num = output_d*output_h*output_w;
 
-	printf("input shape  : (%d,%d,%d,%d,%d)\n",input.N, input.C, input.D, input.H, input.W);
-	printf("output shape : (%d,%d,%d,%d,%d)\n",output_N, output_C, output_D, output_H, output_W);
+	printf("input shape  : (%d,%d,%d,%d,%d)\n",input.n, input.c, input.d, input.h, input.w);
+	printf("output shape : (%d,%d,%d,%d,%d)\n",output_n, output_c, output_d, output_h, output_w);
 	printf("im2col shape : (%d,%d)\n",input.row_num, input.col_num);
 	// coo format
 	int* nnz_d;
@@ -78,17 +78,17 @@ void cube_to_coo_cuda(Mat& input, Mat& filter, Param& p)
 	cudaMemset(nnz_d, 0, sizeof(int));
 	
 	// 3D-input
-	int input_size = input.N*input.C*input.D*input.H*input.W;
+	int input_size = input.n*input.c*input.d*input.h*input.w;
 	cudaMalloc((void**)&input.data_dev, sizeof(float)*input_size);
 	cudaMemcpy(input.data_dev, input.data, sizeof(float)*input_size,cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
 	
-	int block_num = output_D*output_H*output_W;
+	int block_num = output_d*output_h*output_w;
 	dim3 block_size(8,8,8);
 	
 	cube_to_coo<<<block_num, block_size>>>
-		(input.D, input.H, input.W, input.data_dev,
-		 output_D, output_H, output_W,input.coo_dev,
+		(input.d, input.h, input.w, input.data_dev,
+		 output_d, output_h, output_w,input.coo_dev,
 		 nnz_d,p.stride);
 	ERROR_CHECK;	
 
@@ -259,28 +259,20 @@ __global__ void dense_sparse_mm(const int a_height, const int a_width, const flo
 
 }
 
-void call_when_model_loaded(Mat& filter)
-{	
-	set_transpose(filter);
-	int size = filter.N*filter.C*filter.D*filter.H*filter.W;
-	cudaMalloc((void**)&filter.data_dev, sizeof(float)*size);
-	cudaMemcpy(filter.data_dev, filter.data_trans, sizeof(float)*size, cudaMemcpyHostToDevice);
-	printf("filter size %d\n",size);
-}
 
 void dense_sparse_mm_cuda(Mat& input, Mat& filter, Mat& output,
 		int number_of_non_zero_vectors, int* non_zero_vectors)
 {
 
-	int a_height = filter.C*filter.D*filter.H*filter.W;
-	int a_width = filter.N;
+	int a_height = filter.c*filter.d*filter.h*filter.w;
+	int a_width = filter.n;
 	int b_height = input.row_num;
 	int b_width = input.col_num;
 
 	int* non_zero_vectors_dev;
 	cudaMalloc((void**)&non_zero_vectors_dev, sizeof(int)*number_of_non_zero_vectors);
 	cudaMemcpy(non_zero_vectors_dev, non_zero_vectors, sizeof(int)*number_of_non_zero_vectors, cudaMemcpyHostToDevice);
-	call_when_model_loaded(filter);
+	//call_when_model_loaded(filter);
 
 	output.row_num = a_width;
 	output.col_num = b_width;
