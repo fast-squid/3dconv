@@ -164,8 +164,20 @@ int main(int argc, char* argv[])
     Mat filter;
     Mat input;
 	Mat output;
+	Mat temp;
+	set_matrix(temp, 1,1,1,1,1);
     Param p;
 	Model voxnet("voxnet");
+	voxnet.push_inner_layers(new Conv);
+	voxnet.push_inner_layers(new ReLU);
+	voxnet.push_inner_layers(new Conv);
+	voxnet.push_inner_layers(new ReLU);
+	voxnet.push_inner_layers(new Pooling);
+	for(int i=0;i<voxnet.inner_layers.size();i++)
+	{
+		voxnet.inner_layers[i]->forward(temp);
+	}
+
 	std::cout << voxnet.name << std::endl;
 	return 0;
 	//set_matrix(output,32,1,14,14,14);	
