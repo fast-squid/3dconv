@@ -49,17 +49,17 @@ void set_rand(Mat& mat)
 	}
 }
 
-void set_transpose(Mat& mat)
+void Mat::set_transpose()
 {
-	mat.data_trans = new float[mat.get_mat_size()];
-	int row = mat.n;
-	int col = mat.c*mat.d*mat.h*mat.w;
+	data_trans = new float[get_mat_size()];
+	int row = n;
+	int col = c*d*h*w;
 	
-	for(int j=0; j < col; j++)
+	for(int j = 0; j < col; j++)
 	{
 		for(int i = 0; i < row ;i++)
 		{
-			mat.data_trans[j*row + i] = mat.data[i*col + j];
+			data_trans[j*row + i] = data[i*col + j];
 		}
 	}
 }

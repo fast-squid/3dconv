@@ -10,15 +10,40 @@
 		printf("[%s:%d]CUDA ERROR : %s\n", __FILE__, __LINE__, cudaGetErrorString(err) ); \
 	}\
 }
+
 __device__ __constant__ float eps = 0.0001;
 
-// implementation without convolution parameter(padding, stride, groups, dilation)
+/*
+ * TODO: add channel to the algorithm
+ * Function: cube_to_coo
+ * -----------------------------------------------------------------------
+ * Converts dense cube shaped feature matrix to coo formatted matrix
+ * with image to column. This conversion should not be estimated
+ * Parameters ------------------------------------------------------------
+ * input feature (dense input matrix)
+ * 	input_d  : depth of input feature
+ *	input_h  : height of input feature
+ * 	input_w  : width of input feature
+ *  input_data : array of input matrix
+ * output shape
+ *	output_d : depth of output feature
+ *	output_h : height of output feature
+ *	output_w : width of output feature
+ * filter size : size of the filter
+ * stride : size of stride
+ * returns --------------------------------------------------------------
+ * coo : columnized input feature in coo format
+ * nnz : number of nonzero elements of columnized input feature
+ */
+
 __global__ void cube_to_coo(int input_d, int input_h, int input_w, float* input_data,
-		int output_d, int output_h, int output_w, COO* coo, int *nnz, int stride)
+		int output_d, int output_h, int output_w,
+		int filter_size, int stride,
+		COO* coo, int *nnz)
 {
     // block[8] : 0 ~ 7
 	//printf(".\n");	
-	if(threadIdx.x <5 && threadIdx.y < 5 && threadIdx.z <5)
+	if(threadIdx.x <filter_size && threadIdx.y < filter_size && threadIdx.z <filter_size)
 	{
 		
 		int input_w_idx = (blockIdx.x % output_w)*stride + threadIdx.x;
@@ -31,8 +56,8 @@ __global__ void cube_to_coo(int input_d, int input_h, int input_w, float* input_
 		if(input_data[input_idx]>eps)
 		{
 			int global_idx = atomicAdd(nnz, 1);
-			coo[global_idx].row = threadIdx.z*(25)
-				+ threadIdx.y*5
+			coo[global_idx].row = threadIdx.z*(filter_size*filter_size)
+				+ threadIdx.y*filter_size
 				+ threadIdx.x;
 			coo[global_idx].col = blockIdx.x;
 			coo[global_idx].val = input_data[input_idx];
@@ -56,6 +81,7 @@ int compare2(const void* a, const void* b)
 	if(x.row == y.row) return x.col - y.col;
 	else return x.row - y.row;
 }
+
 void cube_to_coo_cuda(Mat& input, Mat& filter, Param& p)
 {
 	int output_n = 1;
@@ -67,30 +93,26 @@ void cube_to_coo_cuda(Mat& input, Mat& filter, Param& p)
 	input.row_num = filter.c*filter.d*filter.h*filter.w;
 	input.col_num = output_d*output_h*output_w;
 
-	printf("input shape  : (%d,%d,%d,%d,%d)\n",input.n, input.c, input.d, input.h, input.w);
-	printf("output shape : (%d,%d,%d,%d,%d)\n",output_n, output_c, output_d, output_h, output_w);
-	printf("im2col shape : (%d,%d)\n",input.row_num, input.col_num);
-	// coo format
 	int* nnz_d;
 
 	cudaMalloc((void**)&input.coo_dev,sizeof(COO)*400000);
 	cudaMalloc((void**)&nnz_d, sizeof(int));
 	cudaMemset(nnz_d, 0, sizeof(int));
-	
+
 	// 3D-input
 	int input_size = input.n*input.c*input.d*input.h*input.w;
 	cudaMalloc((void**)&input.data_dev, sizeof(float)*input_size);
 	cudaMemcpy(input.data_dev, input.data, sizeof(float)*input_size,cudaMemcpyHostToDevice);
 	cudaDeviceSynchronize();
-	
+
 	int block_num = output_d*output_h*output_w;
 	dim3 block_size(8,8,8);
-	
+	printf("%d %d",filter.w, p.stride);
 	cube_to_coo<<<block_num, block_size>>>
 		(input.d, input.h, input.w, input.data_dev,
-		 output_d, output_h, output_w,input.coo_dev,
-		 nnz_d,p.stride);
-	ERROR_CHECK;	
+		 output_d, output_h, output_w,
+		 filter.w, p.stride,
+		 input.coo_dev,nnz_d);
 
 	cudaMemcpy(&input.nnz,nnz_d, sizeof(int), cudaMemcpyDeviceToHost);
 	cudaDeviceSynchronize();
@@ -98,8 +120,8 @@ void cube_to_coo_cuda(Mat& input, Mat& filter, Param& p)
 
 	input.coo = new COO[input.nnz];
 	cudaMemcpy(input.coo, input.coo_dev, input.nnz*sizeof(COO),  cudaMemcpyDeviceToHost);
-	qsort(input.coo, input.nnz, sizeof(COO),compare);
-	cudaMemcpy(input.coo_dev, input.coo, input.nnz*sizeof(COO),  cudaMemcpyHostToDevice);
+	//qsort(input.coo, input.nnz, sizeof(COO),compare);
+	//cudaMemcpy(input.coo_dev, input.coo, input.nnz*sizeof(COO),  cudaMemcpyHostToDevice);
 
 	// cudafree
 	cudaFree(input.data_dev);
@@ -203,8 +225,8 @@ void coo_to_csc_cuda(Mat& input, int& number_of_non_zero_vectors, int *non_zero_
 }
 
 /*
- * Function: dense_sparse_mm
  * TODO: fix code for any integer number for a_height
+ * Function: dense_sparse_mm
  * -----------------------------------------------------------------------
  * computes matrix multiplication  C = AxB corresponding to convolution 
  * Parameters ------------------------------------------------------------
@@ -232,20 +254,14 @@ __global__ void dense_sparse_mm(const int a_height, const int a_width, const flo
 	int wid = tid/32;
 	if(gwid<number_of_non_zero_vectors)
 	{
-		//int b_cidx = gwid;
 		int b_cidx = non_zero_vectors[gwid];
 		int b_offset = b_ptr[b_cidx];
 		int nnz = b_ptr[b_cidx + 1] - b_ptr[b_cidx];
-		//if(threadIdx.x %32 == 0)
-		//	printf("b_cidx %d nnz %d\n",b_cidx,nnz);
-		
-		//__shared__ float smem_a_val[128][32];
 		
 		// compute tiled matrix multiplication
 		float val = 0;
 		for(int i=0 ; i < nnz; i++)
 		{	
-			//smem_a_val[i][32*wid + tid%32] = a_val[a_width*(tid%32) + b_idx[b_offset+i]];
 			val += a_val[a_width*(b_idx[b_offset+i])+wid*32+tid%32] *b_val[b_offset+i];
 
 		}
